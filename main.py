@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify
 from openai import OpenAI
+from translate import Translator
 from joblib import load
 import keras
 import numpy as np
 import json
+import os
 
 app = Flask(__name__)
 
@@ -36,6 +38,9 @@ models = {
 @app.route('/predict', methods = ['POST'])
 def predict():
     data = request.json
+    language = data.get('language', 'en') or 'en'
+    if language not in ['en','ga','fr','es','pt','it','pl','nl','de']:
+        return jsonify({"error": f"Language '{language}' is not supported"}), 400
     illness = data.get('illness')
 
     if illness not in models:
@@ -59,7 +64,7 @@ def predict():
 
     result = "positive" if prediction == 1 else "negative"
 
-    advice = generate_advice(illness, result)
+    advice = generate_advice(illness, result, language)
 
     return jsonify({
         "prediction": result,
@@ -79,8 +84,9 @@ def report_accuracy():
     return jsonify(metrics)
     
 
-def generate_advice(illness, prediction):
+def generate_advice(illness, prediction, language):
     client = OpenAI()
+    translator = Translator(provide='libre', from_lang='en', to_lang=language, secret_access_key=os.environ['LT_API_KEYS'])
 
     prompt = (
         f"The user has been tested for {illness} based on their symptoms, and the result is {prediction}. "
@@ -94,7 +100,12 @@ def generate_advice(illness, prediction):
         ]
     )
 
-    return response.choices[0].message.content
+    advice = response.choices[0].message.content
+
+    if language != 'en':
+        advice = translator.translate(advice)
+
+    return advice
 
         
 
